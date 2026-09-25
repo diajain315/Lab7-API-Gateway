@@ -1,0 +1,15 @@
+**/target/
+**/.git/
+**/.mvn/
+**/mvnw
+**/mvnw.cmd
+**/.classpath
+**/.project
+**/.settings/
+**/.idea/
+**/*.iml
+**/node_modules/
+**/dist/
+**/build/
+screenshots/
+README.md

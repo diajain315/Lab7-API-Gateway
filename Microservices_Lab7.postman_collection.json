@@ -1,0 +1,302 @@
+{
+	"info": {
+		"_postman_id": "lab7-api-gateway-collection",
+		"name": "Lab 7 - API Gateway & Cloud Deployment",
+		"description": "Postman Collection for Web Services & SOA Lab 7: API Gateway, Configuration-Based Service Discovery, and Cloud Deployment",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "BASE_URL",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "CLOUD_GATEWAY_URL",
+			"value": "https://api-gateway-campusconnect.onrender.com",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Gateway Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/health",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"health"
+					]
+				}
+			}
+		},
+		{
+			"name": "2. Gateway - Get All Users",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/users",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"users"
+					]
+				}
+			}
+		},
+		{
+			"name": "3. Gateway - Get User by ID",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/users/101",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"users",
+						"101"
+					]
+				}
+			}
+		},
+		{
+			"name": "4. Gateway - Create User",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Charlie Brown\",\n  \"email\": \"charlie@example.com\",\n  \"role\": \"Student\"\n}"
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/users",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"users"
+					]
+				}
+			}
+		},
+		{
+			"name": "5. Gateway - Get All Products",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/products",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"products"
+					]
+				}
+			}
+		},
+		{
+			"name": "6. Gateway - Get Product by ID",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/products/501",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"products",
+						"501"
+					]
+				}
+			}
+		},
+		{
+			"name": "7. Gateway - Create Product",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Mechanical Keyboard\",\n  \"price\": 89.99,\n  \"category\": \"Electronics\",\n  \"stock\": 25\n}"
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/products",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"products"
+					]
+				}
+			}
+		},
+		{
+			"name": "8. Gateway - Get All Orders",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/orders",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"orders"
+					]
+				}
+			}
+		},
+		{
+			"name": "9. Gateway - Create Order (Success)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userId\": \"101\",\n  \"productId\": \"501\",\n  \"quantity\": 2\n}"
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/orders",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"orders"
+					]
+				}
+			}
+		},
+		{
+			"name": "10. Gateway - Create Order (Invalid User 404)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userId\": \"999\",\n  \"productId\": \"501\",\n  \"quantity\": 1\n}"
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/orders",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"orders"
+					]
+				}
+			}
+		},
+		{
+			"name": "11. Gateway - Unreachable Service Test (502 Bad Gateway)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userId\": \"101\",\n  \"productId\": \"501\",\n  \"quantity\": 1\n}"
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/orders",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"orders"
+					]
+				}
+			}
+		},
+		{
+			"name": "12. Cloud - Gateway Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{CLOUD_GATEWAY_URL}}/health",
+					"host": [
+						"{{CLOUD_GATEWAY_URL}}"
+					],
+					"path": [
+						"health"
+					]
+				}
+			}
+		},
+		{
+			"name": "13. Cloud - Get All Users",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{CLOUD_GATEWAY_URL}}/users",
+					"host": [
+						"{{CLOUD_GATEWAY_URL}}"
+					],
+					"path": [
+						"users"
+					]
+				}
+			}
+		},
+		{
+			"name": "14. Cloud - Create Order",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userId\": \"101\",\n  \"productId\": \"501\",\n  \"quantity\": 1\n}"
+				},
+				"url": {
+					"raw": "{{CLOUD_GATEWAY_URL}}/orders",
+					"host": [
+						"{{CLOUD_GATEWAY_URL}}"
+					],
+					"path": [
+						"orders"
+					]
+				}
+			}
+		}
+	]
+}
