@@ -1,0 +1,56 @@
+name: CI Workflow
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies & Run Tests (API Gateway)
+        run: |
+          if [ -d "Lab 7/api-gateway" ]; then cd "Lab 7/api-gateway"; elif [ -d "api-gateway" ]; then cd "api-gateway"; fi
+          npm install
+
+      - name: Install Dependencies & Run Tests (User Service)
+        run: |
+          if [ -d "Lab 7/user-service" ]; then cd "Lab 7/user-service"; elif [ -d "user-service" ]; then cd "user-service"; fi
+          npm install
+
+      - name: Install Dependencies & Run Tests (Product Service)
+        run: |
+          if [ -d "Lab 7/product-service" ]; then cd "Lab 7/product-service"; elif [ -d "product-service" ]; then cd "product-service"; fi
+          npm install
+
+      - name: Install Dependencies & Run Tests (Order Service)
+        run: |
+          if [ -d "Lab 7/order-service" ]; then cd "Lab 7/order-service"; elif [ -d "order-service" ]; then cd "order-service"; fi
+          npm install
+
+      - name: Build Docker Image - API Gateway
+        run: |
+          if [ -d "Lab 7/api-gateway" ]; then
+            docker build -t api-gateway:${{ github.sha }} "Lab 7/api-gateway"
+          else
+            docker build -t api-gateway:${{ github.sha }} api-gateway
+          fi
+
+      - name: Build Docker Image - User Service
+        run: |
+          if [ -d "Lab 7/user-service" ]; then
+            docker build -t user-service:${{ github.sha }} "Lab 7/user-service"
+          else
+            docker build -t user-service:${{ github.sha }} user-service
+          fi

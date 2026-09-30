@@ -1,178 +1,177 @@
-# Lab 7 - API Gateway, Configuration-Based Service Discovery & Cloud Deployment
-
-**Course:** Web Services & SOA Laboratory  
-**Lab:** Lab 7 - API Gateway, Service Discovery & Cloud  
+# Lab 8 — Kubernetes, Basic CI/CD & Monitoring
 
 ---
 
-## 1. Project Overview & Relationship to Previous Work
+## 1. Executive Summary
 
-In **Lab 4**, a RESTful API was constructed alongside a frontend client.  
-In **Lab 5**, the backend monolithic application and database were containerized using Docker.  
-In **Lab 6**, the monolith was decomposed into three microservices (`User Service`, `Product Service`, `Order Service`) communicating over a shared Docker network.  
-
-In **Lab 7**, we elevate the microservice system to production standards by introducing:
-1. **API Gateway (`api-gateway`)**: A single entry point (port `3000`) that routes client requests, logs traffic, standardizes error responses, and isolates internal microservice endpoints.
-2. **Configuration-Based Service Discovery**: Service locations are externalized into environment variables (`USER_SERVICE_URL`, `PRODUCT_SERVICE_URL`, `ORDER_SERVICE_URL`), allowing routing to adapt dynamically without touching application code.
-3. **Docker Network Isolation**: Only the API Gateway port (`3000:3000`) is exposed publicly. The underlying microservices (`3001`, `3002`, `3003`) are accessible strictly inside the internal Docker bridge network (`campus-network`).
-4. **Cloud Deployment Readiness**: Configured for deployment on cloud container platforms (such as Render, Railway, or Fly.io) with public gateway endpoints.
+This laboratory extends the microservices application built in **Lab 7** by migrating it to a cloud-native DevOps environment. The system integrates:
+* **Orchestration**: Kubernetes manifests for deployments, services, namespaces (`lab8`), and environment configurations (`ConfigMap`).
+* **Resilience**: Replica management, horizontal pod scaling (`user-service`), and self-healing pod recovery.
+* **CI/CD**: GitHub Actions workflow (`.github/workflows/ci.yml`) automating dependency installation, testing, and container builds.
+* **Observability**: Prometheus metric scraping (`port 9090`) and Grafana visualization dashboards (`port 3001`).
 
 ---
 
-## 2. Architecture Diagram
+## 2. System Architecture
 
 ```mermaid
-graph TD
-    Client["Client / Postman<br>(Internet)"]
+flowchart TD
+    Client["Client / Postman"]
     
-    subgraph CloudVPC["Docker Container Environment / Cloud VPC"]
-        GW["API Gateway<br>(Port 3000 - Public)<br>Container: api-gateway"]
+    subgraph K8s["Kubernetes Cluster (Namespace: lab8)"]
+        GW_SVC["Service: api-gateway<br>(LoadBalancer / NodePort 32320)"]
+        GW_DEP["Deployment: api-gateway<br>(Port 3000)"]
         
-        subgraph DockerNetwork["Isolated Internal Network: campus-network"]
-            US["User Service<br>(Port 3001 - Internal)<br>Container: user-service"]
-            PS["Product Service<br>(Port 3002 - Internal)<br>Container: product-service"]
-            OS["Order Service<br>(Port 3003 - Internal)<br>Container: order-service"]
+        subgraph Services["ClusterIP Services"]
+            US_SVC["Service: user-service (Port 3001)"]
+            PS_SVC["Service: product-service (Port 3002)"]
+            OS_SVC["Service: order-service (Port 3003)"]
         end
         
-        DB[("MongoDB Atlas<br>(Cloud Persistence)")]
+        subgraph Pods["Pod Workloads"]
+            US_PODS["User Service Pods<br>(3 Replicas)"]
+            PS_POD["Product Service Pod<br>(1 Replica)"]
+            OS_POD["Order Service Pod<br>(1 Replica)"]
+        end
+        
+        CM["ConfigMap: app-config"]
+        
+        subgraph Stack["Monitoring Stack"]
+            PROM["Prometheus<br>(Port 9090)"]
+            GRAF["Grafana<br>(Port 3001)"]
+        end
     end
     
-    Client -->|HTTP GET/POST :3000| GW
+    DB[("MongoDB Atlas<br>(External Managed DB)")]
     
-    GW -->|/users/* -> USER_SERVICE_URL| US
-    GW -->|/products/* -> PRODUCT_SERVICE_URL| PS
-    GW -->|/orders/* -> ORDER_SERVICE_URL| OS
+    Client -->|HTTP Request| GW_SVC
+    GW_SVC --> GW_DEP
+    GW_DEP -->|ConfigMap URLs| US_SVC
+    GW_DEP -->|ConfigMap URLs| PS_SVC
+    GW_DEP -->|ConfigMap URLs| OS_SVC
     
-    OS -->|GET http://user-service:3001/users/{id}| US
-    OS -->|GET http://product-service:3002/products/{id}| PS
+    US_SVC --> US_PODS
+    PS_SVC --> PS_POD
+    OS_SVC --> OS_POD
     
-    US -.->|MongoDB Connection| DB
-    PS -.->|MongoDB Connection| DB
-    OS -.->|MongoDB Connection| DB
+    US_PODS -.->|Atlas Driver| DB
+    PS_POD -.->|Atlas Driver| DB
+    OS_POD -.->|Atlas Driver| DB
+    
+    PROM -.->|Scrape /metrics| GW_DEP
+    PROM -.->|Scrape /metrics| US_PODS
+    PROM -.->|Scrape /metrics| PS_POD
+    PROM -.->|Scrape /metrics| OS_POD
+    GRAF -->|Prometheus Source| PROM
 ```
 
 ---
 
-## 3. Architecture & Service Boundaries
+## 3. Kubernetes Environment Specifications
 
-| Service | Expose Mode | External Port | Internal Address | Responsibility |
-| :--- | :--- | :--- | :--- | :--- |
-| **API Gateway** | **Public** | `3000` | `http://api-gateway:3000` | Single entry point, routing, logging, centralized `502/503` error handling. |
-| **User Service** | **Private** | *None* | `http://user-service:3001` | Manages user accounts and credentials. |
-| **Product Service** | **Private** | *None* | `http://product-service:3002` | Manages catalog products and inventory. |
-| **Order Service** | **Private** | *None* | `http://order-service:3003` | Manages order creation, validating user & product references via inter-service calls. |
+* **Cluster Provider**: KinD (Kubernetes in Docker)
+* **Cluster Context**: `kind-lab8-cluster`
+* **Control Plane Node**: `lab8-cluster-control-plane` (Status: `Ready`, Version: `v1.31.0`)
+* **Namespace**: `lab8`
 
----
-
-## 4. Discussion Answers
-
-### Discussion Question 1: Why introduce an API Gateway instead of letting clients call each service directly?
-In a microservices architecture without an API Gateway, clients must keep track of multiple service endpoints, deal with different domain names/ports, and manage complex cross-cutting concerns independently. Introducing an API Gateway offers significant architectural benefits:
-- **Single Entry Point**: Clients interact with a single unified base URL (`http://localhost:3000`), hiding internal microservice complexity and backend refactoring.
-- **Enhanced Security & Network Isolation**: Only the gateway port is publicly exposed. The microservices remain inside a private Docker bridge network, protected from unauthorized direct access.
-- **Centralized Cross-Cutting Concerns**: Request logging, rate-limiting, SSL termination, authorization, and error handling are handled uniformly at the entry point rather than duplicated across each service.
-- **Simplified Client Logic**: Clients avoid executing multiple round-trips to disparate microservices, reducing payload size and network round-trip overhead.
+### Cluster Diagnostics & Context Commands
+```powershell
+kubectl config current-context
+kubectl get nodes
+kubectl get namespaces
+```
 
 ---
 
-### Discussion Question 2: Static / Config-Based Discovery vs. Dynamic Service Discovery
-In this lab, we implemented **configuration-based (static) service discovery**, where service addresses are defined in environment variables (`USER_SERVICE_URL`, `PRODUCT_SERVICE_URL`, `ORDER_SERVICE_URL`) and read by the gateway at startup.
+## 4. Manifest Directory & Resource Maps (`k8s/`)
 
-#### Comparison Table:
-
-| Feature | Static / Config-Based (Lab 7) | Dynamic Service Discovery (Consul / Eureka / K8s DNS) |
-| :--- | :--- | :--- |
-| **Location Source** | Environment variables or `.env` / YAML files. | Centralized Service Registry (Consul, Eureka, ZooKeeper, K8s DNS). |
-| **Updates** | Requires service restart when IP/port changes. | Real-time automatic discovery without server restarts. |
-| **Health Checking** | Relies on gateway reverse-proxy error catching (`502/503`). | Automated active heartbeats and health checks by registry. |
-| **Load Balancing** | Static single-target or hardcoded list. | Client-side or server-side dynamic load balancing across auto-scaled instances. |
-| **Complexity** | Extremely lightweight, easy to maintain for fixed deployments. | Requires additional infrastructure containers and daemon processes. |
-
-**What a dynamic registry adds**: A dynamic service registry allows instances to dynamically auto-register and deregister as they scale up or down (e.g. in autoscaling groups or Kubernetes pods). It actively monitors instance health, automatically removing unhealthy containers from the routing pool without requiring manual configuration updates or service restarts.
-
----
-
-## 5. Gateway Endpoints & Routing Table
-
-| Request Method | Gateway Path | Routed Service | Internal Target Endpoint |
+| File | API Version & Kind | Resource Name | Purpose |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/health` | Gateway (Self) | *N/A (Returns Gateway Status)* |
-| `GET`, `POST` | `/users` | User Service | `http://user-service:3001/users` |
-| `GET`, `PUT`, `DELETE` | `/users/:id` | User Service | `http://user-service:3001/users/:id` |
-| `GET`, `POST` | `/products` | Product Service | `http://product-service:3002/products` |
-| `GET`, `PUT`, `DELETE` | `/products/:id` | Product Service | `http://product-service:3002/products/:id` |
-| `GET`, `POST` | `/orders` | Order Service | `http://order-service:3003/orders` |
-| `GET` | `/orders/:id` | Order Service | `http://order-service:3003/orders/:id` |
+| `configmap.yaml` | `v1 / ConfigMap` | `app-config` | Externalized non-sensitive service URLs & ports |
+| `gateway-deployment.yaml` | `apps/v1 / Deployment` | `api-gateway` | Manages 1 replica of the API Gateway proxy container |
+| `gateway-service.yaml` | `v1 / Service` | `api-gateway` | LoadBalancer service exposing port 3000 (NodePort 32320) |
+| `user-deployment.yaml` | `apps/v1 / Deployment` | `user-service` | Manages 3 scaled replicas of User Service |
+| `user-service.yaml` | `v1 / Service` | `user-service` | ClusterIP service exposing port 3001 |
+| `product-deployment.yaml` | `apps/v1 / Deployment` | `product-service` | Manages 1 replica of Product Service |
+| `product-service.yaml` | `v1 / Service` | `product-service` | ClusterIP service exposing port 3002 |
+| `order-deployment.yaml` | `apps/v1 / Deployment` | `order-service` | Manages 1 replica of Order Service |
+| `order-service.yaml` | `v1 / Service` | `order-service` | ClusterIP service exposing port 3003 |
 
 ---
 
-## 6. How to Build & Run locally
+## 5. Application Deployment & Operations
 
-### Build and Start Containers
-```bash
-docker compose up -d --build
+### 5.1 Apply Manifests
+```powershell
+kubectl apply -f k8s/ -n lab8
+kubectl get deployments,pods,services -n lab8
 ```
 
-### Verify Running Containers
-```bash
-docker compose ps
+### 5.2 API Gateway Verification
+Port forward API Gateway to port 3000:
+```powershell
+kubectl port-forward -n lab8 svc/api-gateway 3000:3000
 ```
-*Notice that only `api-gateway` exposes `0.0.0.0:3000->3000/tcp`. Microservices are bound to `3001`, `3002`, `3003` inside the container network only.*
+Endpoints:
+* `GET http://localhost:3000/users`
+* `GET http://localhost:3000/products`
+* `GET http://localhost:3000/orders`
 
-### View Gateway Logs
-```bash
-docker compose logs -f api-gateway
+### 5.3 Horizontal Pod Scaling
+Scale `user-service` to 3 replicas:
+```powershell
+kubectl scale deployment user-service --replicas=3 -n lab8
+kubectl get pods -n lab8
 ```
 
-### Stop Containers
-```bash
-docker compose down
+### 5.4 Self-Healing Recovery
+Demonstrate self-healing by deleting a pod:
+```powershell
+kubectl delete pod <user-service-pod-name> -n lab8
+kubectl get pods -n lab8
 ```
 
 ---
 
-## 7. Testing & Verification Guide (Postman)
+## 6. GitHub Actions CI Pipeline (`.github/workflows/ci.yml`)
 
-Import `Microservices_Lab7.postman_collection.json` into Postman.
-
-### Test Matrix:
-1. **Health Check**: `GET http://localhost:3000/health` $\rightarrow$ `200 OK`
-2. **Get Users**: `GET http://localhost:3000/users` $\rightarrow$ `200 OK`
-3. **Get Products**: `GET http://localhost:3000/products` $\rightarrow$ `200 OK`
-4. **Create Order (Success)**: `POST http://localhost:3000/orders` with body `{"userId": "101", "productId": "501", "quantity": 2}` $\rightarrow$ `201 Created`
-5. **Unreachable Service Test (502 Bad Gateway)**:
-   - Run: `docker stop user-service`
-   - Send: `POST http://localhost:3000/orders`
-   - Expected Output: `502 Bad Gateway` JSON response from gateway:
-     ```json
-     {
-       "error": "Bad Gateway",
-       "message": "Failed to communicate with Order Service at http://order-service:3003. Service may be offline or unreachable.",
-       "targetService": "Order Service",
-       "targetUrl": "http://order-service:3003",
-       "statusCode": 502
-     }
-     ```
-   - Restart service: `docker compose start user-service`
+The CI pipeline runs on `push` and `pull_request` to `main`/`master` branches:
+1. **Checkout**: Fetches repository code.
+2. **Environment Setup**: Configures Node.js 18.
+3. **Dependency Resolution**: Runs `npm install` across microservice modules.
+4. **Containerization**: Builds Docker images tagged with `github.sha`.
 
 ---
 
-## 8. Cloud Deployment Guide
+## 7. Monitoring Stack (Prometheus & Grafana)
 
-1. **Select Platform**: Render, Railway, or Fly.io.
-2. **Deploy Microservices & Gateway**:
-   - Deploy `user-service`, `product-service`, `order-service` as private web services.
-   - Deploy `api-gateway` as a public web service exposing port `3000`.
-3. **Configure Environment Variables in Cloud Dashboard**:
-   - `USER_SERVICE_URL`: `http://user-service-cloud-host:3001` (or public internal URL)
-   - `PRODUCT_SERVICE_URL`: `http://product-service-cloud-host:3002`
-   - `ORDER_SERVICE_URL`: `http://order-service-cloud-host:3003`
-4. **Public Gateway URL Verification**:
-   - Access `https://<your-gateway-app>.onrender.com/health`
-   - Re-run Postman collection using `CLOUD_GATEWAY_URL`.
+* **Prometheus Access**: `kubectl port-forward -n lab8 svc/prometheus 9090:9090` (`http://localhost:9090`)
+* **Grafana Access**: `kubectl port-forward -n lab8 svc/grafana 3001:3000` (`http://localhost:3001`)
+
+### Target Health Matrix
+| Target Service | Endpoint | Scrape Port | Status |
+| :--- | :--- | :--- | :--- |
+| API Gateway | `api-gateway:3000` | 3000 | `UP` |
+| User Service | `user-service:3001` | 3001 | `UP` |
+| Product Service | `product-service:3002` | 3002 | `UP` |
+| Order Service | `order-service:3003` | 3003 | `UP` |
 
 ---
 
-## 9. Written Reflection
+## 8. Evidence & Deliverables Checklist (13 Screenshots)
 
-Comparing Lab 7 with Lab 6, the introduction of an API Gateway and cloud-oriented architecture fundamentally transforms how the system is operated and consumed. In Lab 6, clients directly targeted individual microservices across exposed ports, creating tight coupling and exposing backend infrastructure. By routing all requests through a central gateway in Lab 7, we decoupled client applications from individual service locations and established strict network isolation where services reside safely in a private Docker network. Furthermore, externalizing service URLs into environment variables allowed seamless environment switching between local Docker containers and cloud deployments without altering application source code. Finally, centralizing request logging and 502/503 error handling at the gateway layer vastly improved system observability and fault tolerance across the entire multi-service ecosystem.
+| Screenshot ID | Topic | Content / Command |
+| :---: | :--- | :--- |
+| **Screenshot 1** | Lab 7 Baseline | `GET /users` Postman request before k8s migration |
+| **Screenshot 2** | k8s Environment | `kubectl config current-context` & `kubectl get nodes` |
+| **Screenshot 3** | Manifest Files | Directory listing of `k8s/` folder showing 9 YAML files |
+| **Screenshot 4** | Deployments | `kubectl get deployments,pods,services -n lab8` |
+| **Screenshot 5** | Gateway Test | Postman request through Kubernetes API Gateway |
+| **Screenshot 6** | Pod Scaling | `user-service` deployment scaled to 3 replicas |
+| **Screenshot 7** | Self-Healing | Terminal showing deleted pod and replacement pod starting |
+| **Screenshot 8** | Troubleshooting | `kubectl describe pod` or `kubectl logs` output |
+| **Screenshot 9** | GitHub Actions | Successful CI workflow execution in GitHub Actions UI |
+| **Screenshot 10** | Prometheus Targets | Prometheus targets UI page (`:9090`) showing `UP` states |
+| **Screenshot 11** | Grafana Dashboard | Grafana dashboard UI page (`:3001`) with metrics panels |
+| **Screenshot 12** | Traffic Monitoring | Grafana metric changes after API traffic generation |
+| **Screenshot 13** | Architecture Overview | Complete system architecture diagram |
